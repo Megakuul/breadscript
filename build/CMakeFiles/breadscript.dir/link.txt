@@ -1,0 +1,1 @@
+/usr/bin/cc CMakeFiles/breadscript.dir/main.c.o CMakeFiles/breadscript.dir/cith/cstrings.c.o CMakeFiles/breadscript.dir/cith/cvector.c.o -o breadscript 

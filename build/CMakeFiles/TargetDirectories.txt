@@ -1,0 +1,3 @@
+/home/linus/Documents/Repos/breadscript/build/CMakeFiles/breadscript.dir
+/home/linus/Documents/Repos/breadscript/build/CMakeFiles/edit_cache.dir
+/home/linus/Documents/Repos/breadscript/build/CMakeFiles/rebuild_cache.dir

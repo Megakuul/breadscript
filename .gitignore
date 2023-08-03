@@ -1,0 +1,6 @@
+*/build/**
+
+# Ignore Emacs backup and autosave files
+*~
+\#*\#
+.\#*
