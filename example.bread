@@ -1,1 +1,7 @@
-~ I'm a notice for baking the bread, I'm ignored (because noone likes me) ~
+~ I'm a notice for baking the bread, I'm ignored (because noone likes me) qd~
+
+say("Hello Sir")
+
+fun() {
+
+}

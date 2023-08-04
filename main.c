@@ -4,6 +4,9 @@
 #include <ctype.h>
 #include <cith.h>
 
+// End of String
+#define EOS '\0'
+
 /**
  If the lexer, parser or evaluator fails,
  it will write the error into this string
@@ -35,25 +38,23 @@ static char getnextchar(char* str) {
   return charbuf;
 }
 
-static Token getnexttoken(cstring* str) {
-
-  static char LastChar = ' ';
+static int getnexttoken(cstring* str) {
+  
+  static int LastChar = ' ';
 
   while (isspace(LastChar))
-    LastChar=getnextchar(str.str);
-
+    LastChar=getnextchar(str->str);
+  
   if (isalpha(LastChar)) {
-    strsetc(CurIdentifier, LastChar);
-   
-    while (isalnum(LastChar=getnextchar(str.str))) {
-      straddc(CurIdentifier, LastChar);
-
-      if (CurIdentifier=="fun")
-	return tok_fun;
-      if (CurIdentifier=="say")
-	return tok_print;
-      return tok_identifier;
-    }
+    strsetc(&CurIdentifier, LastChar);
+    while (isalnum(LastChar=getnextchar(str->str)))
+      straddc(&CurIdentifier, LastChar);
+    
+    if (strcmp(CurIdentifier.str, "fun") == 0)
+      return tok_fun;
+    if (strcmp(CurIdentifier.str, "say") == 0)
+      return tok_print;
+    return tok_identifier;
   }
 
   if (isdigit(LastChar) || LastChar == '.') {
@@ -61,37 +62,74 @@ static Token getnexttoken(cstring* str) {
     strinit(&numstr, NULL);
     do {
       straddc(&numstr, LastChar);
-      LastChar = getnextchar(str.str);
+      LastChar = getnextchar(str->str);
     } while(isdigit(LastChar) || LastChar == '.');
     char* endptr;
     CurNum = strtod(numstr.str, &endptr);
-    strfree(numstr);
-    if (*endptr != '\0') {
-      // TODO: use a sprinter to push it to the errorstring and return -400
-      // If you read this Im implementing a usable sprintf in cith
-      fprintf(stderr, "Invalid char [%c] at [%zu]", *endptr, CurIndex);
+    strfree(&numstr);
+    if (*endptr != EOS) {
+      // TODO: Use getPositionFromIndex function to determine the exact location in the file
+      // https://github.com/Megakuul/to-compiler/blame/main/src/logger.cpp
+      strcsprintf(&ERROR_STR, "Invalid char [%c] at [%zu]", *endptr, CurIndex);
       return tok_invalid;
     }
     return tok_num;
   }
-
+  
   if (LastChar == '~') {
     do {
-      LastChar = getnextchar(str.str);
-    } while (LastChar!=EOF && LastChar != '~');
-
-    if (LastChar!=EOF) {
+      LastChar = getnextchar(str->str);
+    } while (LastChar!=EOF && LastChar != '~' && LastChar!=EOS);
+    
+    if (LastChar!=EOF && LastChar!=EOS) {
+      // Eat the closing symbol
+      LastChar = getnextchar(str->str);
       return getnexttoken(str);
     }
   }
 
-  if (LastChar==EOF)
+  if (LastChar==EOF || LastChar==EOS)
     return tok_eof;
 
-  return LastChar;
+  int ThisChar = LastChar;
+  LastChar = getnextchar(str->str);
+  return ThisChar;
 }
 
 /* Lexer */
+
+/* Parser */
+
+static int CurToken;
+static int ReadNextTok(cstring *str) {
+  return CurToken = getnexttoken(str);
+}
+/* Parser */
+
+/* Driver */
+
+static void MainLoop(cstring *src) {
+  ReadNextTok(src);
+  while(1) {
+    switch (CurToken) {
+    case tok_invalid:
+    case tok_eof:
+      return;
+    case tok_fun:
+      printf("Parse Function\n");
+      break;
+    case tok_print:
+      printf("Parse Print\n");
+      break;
+    default:
+      printf("Parse Top Level\n");
+      break;
+    }
+    ReadNextTok(src);
+  }
+}
+
+/* Driver */
 
 int main(int argc, char *argv[]) {
   
@@ -123,9 +161,21 @@ int main(int argc, char *argv[]) {
   fclose(sf);
   scstr.str[sf_size] = '\0';
 
-  strinit(&CurIdentifier);
+  strinit(&CurIdentifier, NULL);
+  strinit(&ERROR_STR, NULL);
   printf("Code: \n\n%s\n", scstr.str);
 
+  MainLoop(&scstr);
+
+  int exit = 0;
+  if (ERROR_STR.str!=NULL) {
+    exit = 1;
+    fprintf(stderr, "[ Error ]\n%s\n", ERROR_STR.str);
+  }
   
   strfree(&scstr);
+  strfree(&ERROR_STR);
+  strfree(&CurIdentifier);
+
+  return exit;
 }
