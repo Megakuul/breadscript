@@ -4,9 +4,9 @@ var mynum = 5;
 
 var nextvar = 6;
 
-var velo = 3.5;
+var velo = 3.5
 
-var brunne = .3;
+var brunne = velo;
 
 say("Hello Sir")
 

@@ -30,8 +30,6 @@ typedef enum {
   tok_fun = -4,
   tok_var = -5,
   tok_print = -6,
-
-  tok_invalid = -400
 } Token;
 
 static char getnextchar(char* str) {
@@ -76,7 +74,7 @@ static int getnexttoken(cstring* str) {
       // https://github.com/Megakuul/to-compiler/blame/main/src/logger.cpp
       strcsprintf(&ERROR_STR, "Invalid char [%c] at [%zu]", *endptr, CurIndex);
       strfree(&numstr);
-      return tok_invalid;
+      goto exit;
     }
     strfree(&numstr);
     return tok_num;
@@ -112,7 +110,7 @@ static int ReadNextTok(cstring *str) {
 }
 
 typedef struct Node {
-  enum { CONSTANT_NODE, DECL_NODE, REF_NODE, BINOP_NODE, FUNC_NODE, CALL_NODE, C_CALL_NODE } type;
+  enum { CONSTANT_NODE, DECL_NODE, ASSIGN_NODE, REF_NODE, BINOP_NODE, FUNC_NODE, CALL_NODE, C_CALL_NODE } type;
   union {
     struct {
       double value;
@@ -123,6 +121,11 @@ typedef struct Node {
       struct Node *value;
     } decl;
 
+    struct {
+      char* name;
+      struct Node *value;
+    } assign;
+    
     struct {
       char* name;
     } ref;
@@ -182,16 +185,11 @@ void ParseDecl(cstring *src, Node *pRoot) {
       break;
 
     default:
-      fprintf(stderr, "Invalid token after '=', err: %s\n", ERROR_STR.str);
-      exit(1);
-      break;
+      strcsprintf(&ERROR_STR, "Invalid token in declaration at [%zu]", CurIndex);
+      goto exit;
     }
-  } else if (CurToken==';') {
-    // Set pointer to NULL if no initial value is set
-    pVar->decl.value = NULL;
   } else {
-    printf("Invalid token after variable\n");
-    exit(1);
+    pVar->decl.value = NULL;
   }
   
   pRoot->func.body = realloc(pRoot->func.body, pRoot->func.cbody * sizeof(Node*));
@@ -215,7 +213,6 @@ static void MainLoop(cstring *src, Node *pRoot) {
   ReadNextTok(src);
   while(1) {
     switch (CurToken) {
-    case tok_invalid:
     case tok_eof:
       return;
     case tok_var:
@@ -240,6 +237,9 @@ static void MainLoop(cstring *src, Node *pRoot) {
 
 /* Driver */
 
+
+/* Evaluator */
+
 void PrintAST(Node* root, int layer) {
   char prefix[layer + 1];
   for (int i = 0; i < layer; i++) {
@@ -254,6 +254,10 @@ void PrintAST(Node* root, int layer) {
   case DECL_NODE:
     printf("%sDECLARATION('%s'):\n", prefix, root->decl.name);
     PrintAST(root->decl.value, layer+1);
+    break;
+  case ASSIGN_NODE:
+    printf("%sASSIGNMENT('%s')\n", prefix, root->assign.name);
+    PrintAST(root->assign.value, layer+1);
     break;
   case REF_NODE:
     printf("%sREFERENCE('%s')\n", prefix, root->ref.name);
@@ -277,6 +281,8 @@ void PrintAST(Node* root, int layer) {
     break;
   }
 }
+
+/* Evaluator */
 
 int main(int argc, char *argv[]) {
   
@@ -323,13 +329,15 @@ int main(int argc, char *argv[]) {
   printf("\nTraversing AST:\n");
   PrintAST(pRoot, 0);
   printf("Exited\n");
-  
+
+
+ exit:
   int exit = 0;
   if (ERROR_STR.str!=NULL) {
     exit = 1;
     fprintf(stderr, "[ Error ]\n%s\n", ERROR_STR.str);
   }
-
+  
   free(pRoot);
   strfree(&scstr);
   strfree(&ERROR_STR);
