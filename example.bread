@@ -1,5 +1,13 @@
 ~ I'm a notice for baking the bread, I'm ignored (because noone likes me) qd~
 
+var mynum = 5;
+
+var nextvar = 6;
+
+var velo = 3.5;
+
+var brunne = .3;
+
 say("Hello Sir")
 
 fun() {

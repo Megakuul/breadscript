@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,7 +28,8 @@ typedef enum {
   tok_identifier = -2,
   tok_num = -3,
   tok_fun = -4,
-  tok_print = -5,
+  tok_var = -5,
+  tok_print = -6,
 
   tok_invalid = -400
 } Token;
@@ -54,9 +56,12 @@ static int getnexttoken(cstring* str) {
       return tok_fun;
     if (strcmp(CurIdentifier.str, "say") == 0)
       return tok_print;
+    if (strcmp(CurIdentifier.str, "var") == 0)
+      return tok_var;
     return tok_identifier;
   }
 
+  
   if (isdigit(LastChar) || LastChar == '.') {
     cstring numstr;
     strinit(&numstr, NULL);
@@ -66,13 +71,14 @@ static int getnexttoken(cstring* str) {
     } while(isdigit(LastChar) || LastChar == '.');
     char* endptr;
     CurNum = strtod(numstr.str, &endptr);
-    strfree(&numstr);
     if (*endptr != EOS) {
       // TODO: Use getPositionFromIndex function to determine the exact location in the file
       // https://github.com/Megakuul/to-compiler/blame/main/src/logger.cpp
       strcsprintf(&ERROR_STR, "Invalid char [%c] at [%zu]", *endptr, CurIndex);
+      strfree(&numstr);
       return tok_invalid;
     }
+    strfree(&numstr);
     return tok_num;
   }
   
@@ -104,25 +110,128 @@ static int CurToken;
 static int ReadNextTok(cstring *str) {
   return CurToken = getnexttoken(str);
 }
+
+typedef struct Node {
+  enum { CONSTANT_NODE, DECL_NODE, REF_NODE, BINOP_NODE, FUNC_NODE, CALL_NODE, C_CALL_NODE } type;
+  union {
+    struct {
+      double value;
+    } constant;
+    
+    struct {
+      char* name;
+      struct Node *value;
+    } decl;
+
+    struct {
+      char* name;
+    } ref;
+    
+    struct {
+      enum { ADD, SUB, MUL, DIV } op;
+      struct Node *left;
+      struct Node *right;
+    } binop;
+    
+    struct {
+      char* name;
+      struct Node **body;
+      int cbody;
+    } func;
+    
+    struct {
+      char* name;
+    } call;
+    
+    struct {
+      char* library;
+      char* function;
+      struct Node **args;
+      int cargs;
+    } c_call;
+  };
+} Node;
+
+
+void ParseDecl(cstring *src, Node *pRoot) {
+  
+  ReadNextTok(src);
+  assert(CurToken==tok_identifier);
+  
+  Node* pVar = malloc(sizeof(Node));
+  pVar->type = DECL_NODE;
+  pVar->decl.name = malloc(strlen(CurIdentifier.str) + 1);
+  strcpy(pVar->decl.name, CurIdentifier.str);
+  
+  ReadNextTok(src);
+  
+  if (CurToken=='=') {
+    ReadNextTok(src);
+    switch (CurToken) {
+    case tok_num:
+      pVar->decl.value = malloc(sizeof(Node));
+      pVar->decl.value->type = CONSTANT_NODE;
+      pVar->decl.value->constant.value = CurNum;
+      break;
+      
+    case tok_identifier:
+      pVar->decl.value = malloc(sizeof(Node));
+      pVar->decl.value->type = REF_NODE;
+      pVar->decl.value->ref.name = malloc(strlen(CurIdentifier.str) + 1);
+      strcpy(pVar->decl.value->ref.name, CurIdentifier.str);
+      break;
+
+    default:
+      fprintf(stderr, "Invalid token after '=', err: %s\n", ERROR_STR.str);
+      exit(1);
+      break;
+    }
+  } else if (CurToken==';') {
+    // Set pointer to NULL if no initial value is set
+    pVar->decl.value = NULL;
+  } else {
+    printf("Invalid token after variable\n");
+    exit(1);
+  }
+  
+  pRoot->func.body = realloc(pRoot->func.body, pRoot->func.cbody * sizeof(Node*));
+  pRoot->func.body[pRoot->func.cbody] = pVar;
+  pRoot->func.cbody++;
+}
+
+void ParseFunction(cstring *src, Node *pRoot) {
+
+}
+
+void ParsePrint(cstring *src, Node *pRoot) {
+
+}
+
 /* Parser */
 
 /* Driver */
 
-static void MainLoop(cstring *src) {
+static void MainLoop(cstring *src, Node *pRoot) {
   ReadNextTok(src);
   while(1) {
     switch (CurToken) {
     case tok_invalid:
     case tok_eof:
       return;
+    case tok_var:
+      printf("Parse Variable\n");
+      ParseDecl(src, pRoot);
+      break;
     case tok_fun:
       printf("Parse Function\n");
+      ParseFunction(src, pRoot);
       break;
     case tok_print:
       printf("Parse Print\n");
+      ParsePrint(src, pRoot);
       break;
     default:
-      printf("Parse Top Level\n");
+      printf("Parse oTHER\n");
       break;
     }
     ReadNextTok(src);
@@ -130,6 +239,44 @@ static void MainLoop(cstring *src) {
 }
 
 /* Driver */
+
+void PrintAST(Node* root, int layer) {
+  char prefix[layer + 1];
+  for (int i = 0; i < layer; i++) {
+    prefix[i] = '\t';
+  }
+  prefix[layer] = '\0';
+  
+  switch (root->type) {
+  case CONSTANT_NODE:
+    printf("%sCONSTANT('%lf')\n", prefix, root->constant.value);
+    break;
+  case DECL_NODE:
+    printf("%sDECLARATION('%s'):\n", prefix, root->decl.name);
+    PrintAST(root->decl.value, layer+1);
+    break;
+  case REF_NODE:
+    printf("%sREFERENCE('%s')\n", prefix, root->ref.name);
+    break;
+  case BINOP_NODE:
+    printf("%sBINOP('%i'):\n", prefix, root->binop.op);
+    PrintAST(root->binop.left, layer+1);
+    PrintAST(root->binop.right, layer+1);
+    break;
+  case FUNC_NODE:
+    printf("%sFUNCTION_DECL('%s'):\n", prefix, root->func.name);
+    for (int i = 0; i < root->func.cbody; i++) {
+      PrintAST(root->func.body[i], layer+1);
+    }
+    break;
+  case CALL_NODE:
+    printf("%sFUNCTION_CALL('%s')\n", prefix, root->call.name);
+    break;
+  default:
+    printf("%sOTHER\n", prefix);
+    break;
+  }
+}
 
 int main(int argc, char *argv[]) {
   
@@ -163,16 +310,27 @@ int main(int argc, char *argv[]) {
 
   strinit(&CurIdentifier, NULL);
   strinit(&ERROR_STR, NULL);
-  printf("Code: \n\n%s\n", scstr.str);
+  printf("---Code---\n%s\n---Code---\n", scstr.str);
 
-  MainLoop(&scstr);
+  Node *pRoot = malloc(sizeof(Node));
+  pRoot->type = FUNC_NODE;
+  pRoot->func.name = "main";
+  pRoot->func.body = NULL;
+  pRoot->func.cbody = 0;
+  
+  MainLoop(&scstr, pRoot);
 
+  printf("\nTraversing AST:\n");
+  PrintAST(pRoot, 0);
+  printf("Exited\n");
+  
   int exit = 0;
   if (ERROR_STR.str!=NULL) {
     exit = 1;
     fprintf(stderr, "[ Error ]\n%s\n", ERROR_STR.str);
   }
-  
+
+  free(pRoot);
   strfree(&scstr);
   strfree(&ERROR_STR);
   strfree(&CurIdentifier);
